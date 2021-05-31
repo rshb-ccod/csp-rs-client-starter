@@ -5,7 +5,6 @@ import io.rsocket.transport.netty.client.TcpClientTransport;
 import org.springframework.messaging.rsocket.RSocketRequester;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.publisher.Sinks;
 import reactor.util.retry.Retry;
 import ru.rshb.taskmanagement.api.dto.OperationRequestMessage;
 import ru.rshb.taskmanagement.api.dto.OperationResultMessage;
@@ -24,10 +23,6 @@ public class CspRSClientManager {
     private RSocketRequester.Builder requesterbuilder;
     private Map<RSServices, CspRSClientManager.RSAddress> rSocketServices;
 
-    private Map<RSServices, Sinks.Many<OperationResultMessage>> responsesSinks
-            = new HashMap<>();
-    private Map<RSServices, Sinks.Many<OperationRequestMessage>> requestsSinks
-            = new HashMap<>();
     private Map<RSServices, RSocketRequester.RequestSpec> requesters
             = new HashMap<>();
 
@@ -41,9 +36,17 @@ public class CspRSClientManager {
         operationMessage.setOperationId(operationId);
         //operationMessage.setChannelId(usersDomainChannel);
 
-        getRequestSink(service).tryEmitNext(operationMessage);
-        return getResponsSink(service).asFlux()
-                .filter((result) -> result.getOperationId().equals(operationId));
+        return getRequester(service)
+                .data(operationMessage)
+                .retrieveFlux(OperationResultMessage.class)
+                .flatMap((resultMessage) -> { // Для перехвата сообщений с ошибками
+                    if (resultMessage.isFail() || resultMessage.getThrowable() != null) {
+                        return Mono.error(resultMessage.getThrowable() != null
+                                ? resultMessage.getThrowable()
+                                : new Throwable("UNKNOWN_ERROR"));
+                    }
+                    return Mono.just(resultMessage);
+                });
     }
 
     private RSocketRequester.RequestSpec getRequester(RSServices service) {
@@ -60,41 +63,6 @@ public class CspRSClientManager {
         return requesters.get(service);
     }
 
-    public Sinks.Many<OperationRequestMessage> getRequestSink(RSServices service) {
-        if (!requestsSinks.containsKey(service)) {
-            Sinks.Many<OperationRequestMessage> sink = Sinks.many().replay().all();
-            // Подцепляем рекьюстер на этот поток
-            sink.asFlux()
-                    .flatMap((request) -> {
-                        // Здась наверно надо будет что-то запиливать
-                        return getRequester(service)
-                                .data(request)
-                                .retrieveFlux(OperationResultMessage.class)
-                                .flatMap((resultMessage) -> { // Для перехвата сообщений с ошибками
-                                    if (resultMessage.isFail() || resultMessage.getThrowable() != null) {
-                                        return Mono.error(resultMessage.getThrowable() != null
-                                                ? resultMessage.getThrowable()
-                                                : new Throwable("UNKNOWN_ERROR"));
-                                    }
-                                    return Mono.just(resultMessage);
-                                });
-                    })
-                    .subscribe((response) -> {
-                        getResponsSink(service).tryEmitNext(response);
-                    });
-            requestsSinks.put(service, sink);
-        }
-        return requestsSinks.get(service);
-    }
-
-    public Sinks.Many<OperationResultMessage> getResponsSink(RSServices service) {
-        if (!responsesSinks.containsKey(service)) {
-            Sinks.Many<OperationResultMessage> sink = Sinks.many().replay().all();
-            responsesSinks.put(service, sink);
-        }
-        return responsesSinks.get(service);
-    }
-
     public void setServices(Map<RSServices, RSAddress> services) {
         this.rSocketServices = services;
     }
@@ -107,11 +75,11 @@ public class CspRSClientManager {
         return requesterbuilder;
     }
 
-     void setManager(RSocketRequester.Builder builder) {
+    void setManager(RSocketRequester.Builder builder) {
         this.requesterbuilder = builder;
     }
 
-    Gson getGson() {
+    private Gson getGson() {
         return gson;
     }
 
