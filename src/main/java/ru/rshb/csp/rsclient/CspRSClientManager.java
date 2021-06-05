@@ -4,7 +4,6 @@ import com.google.gson.Gson;
 import io.rsocket.transport.netty.client.TcpClientTransport;
 import org.springframework.messaging.rsocket.RSocketRequester;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 import ru.rshb.taskmanagement.api.dto.OperationRequestMessage;
 import ru.rshb.taskmanagement.api.dto.OperationResultMessage;
@@ -17,16 +16,14 @@ import java.util.UUID;
 /*
  * Инициализирует каналы для rsocket
  */
-//@Component
 public class CspRSClientManager {
     private Gson gson;
     private RSocketRequester.Builder requesterbuilder;
     private Map<RSServices, CspRSClientManager.RSAddress> rSocketServices;
 
-    private Map<RSServices, RSocketRequester.RequestSpec> requesters
-            = new HashMap<>();
+    private Map<RSServices, RSocketRequester.RequestSpec> requesters = new HashMap<>();
 
-    public Flux<OperationResultMessage> post(RSServices service, String operation, Object params) {
+    public Flux<OperationResultMessage> send(RSServices service, String operation, Object params) {
 
         UUID operationId = UUID.randomUUID();
 
@@ -34,16 +31,15 @@ public class CspRSClientManager {
         OperationRequestMessage operationMessage = new OperationRequestMessage(jsonRequest);
         operationMessage.setOperation(operation);
         operationMessage.setOperationId(operationId);
-        //operationMessage.setChannelId(usersDomainChannel);
 
         return getRequester(service)
                 .data(operationMessage)
                 .retrieveFlux(OperationResultMessage.class)
-                .flatMap((resultMessage) -> { // Для перехвата сообщений с ошибками
-                    if (resultMessage.getError() != null) {
-                        return Flux.error(resultMessage.getError());
+                .concatMap((message) -> { // Для перехвата сообщений с ошибками
+                    if (message.getError() != null) {
+                        return Flux.error(message.getError());
                     }
-                    return Flux.just(resultMessage);
+                    return Flux.just(message);
                 });
     }
 
