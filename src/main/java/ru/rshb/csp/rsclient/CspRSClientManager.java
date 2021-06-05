@@ -40,12 +40,10 @@ public class CspRSClientManager {
                 .data(operationMessage)
                 .retrieveFlux(OperationResultMessage.class)
                 .flatMap((resultMessage) -> { // Для перехвата сообщений с ошибками
-                    if (resultMessage.isFail() || resultMessage.getThrowable() != null) {
-                        return Mono.error(resultMessage.getThrowable() != null
-                                ? resultMessage.getThrowable()
-                                : new Throwable("UNKNOWN_ERROR"));
+                    if (resultMessage.getError() != null) {
+                        return Flux.error(resultMessage.getError());
                     }
-                    return Mono.just(resultMessage);
+                    return Flux.just(resultMessage);
                 });
     }
 
