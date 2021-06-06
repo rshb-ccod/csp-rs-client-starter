@@ -25,12 +25,12 @@ public class CspRSClientManager {
 
     public Flux<OperationResultMessage> send(RSServices service, String operation, Object params) {
 
-        UUID operationId = UUID.randomUUID();
+        UUID correlationId = UUID.randomUUID();
 
         String jsonRequest = gson.toJson(params);
         OperationRequestMessage operationMessage = new OperationRequestMessage(jsonRequest);
         operationMessage.setOperation(operation);
-        operationMessage.setOperationId(operationId);
+        operationMessage.setCorrelationId(correlationId);
 
         return getRequester(service)
                 .data(operationMessage)
