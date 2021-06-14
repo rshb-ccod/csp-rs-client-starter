@@ -34,8 +34,8 @@
 
     <dependencies>
         <dependency>
-            <groupId>ru.rshb.csp.taskmanager</groupId>
-            <artifactId>tasks-manager-common</artifactId>
+            <groupId>ru.rshb.csp</groupId>
+            <artifactId>csp-common-package</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
 
